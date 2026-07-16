@@ -47,7 +47,8 @@ async function getVideoInfo(url) {
             dumpSingleJson: true,
             noWarnings: true,
             noCheckCertificate: true,
-            ignoreNoFormatsError: true // Penting untuk IG Slide Foto
+            ignoreNoFormatsError: true, // Penting untuk IG Slide Foto
+            forceIpv4: true // Paksa IPv4 untuk menghindari blokir IPv6 di VPS
         };
         
         // Gunakan cookies jika tersedia (sangat direkomendasikan untuk bypass blokir IP YouTube/Instagram di VPS)
@@ -55,9 +56,9 @@ async function getVideoInfo(url) {
             options.cookies = COOKIES_PATH;
         }
 
-        // Bypass blokir IP YouTube dengan memicu fallback ke ios dan web player client
+        // Bypass blokir IP YouTube dengan memicu fallback ke android dan web player client
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
-            options.extractorArgs = 'youtube:player-client=ios,web,default';
+            options.extractorArgs = 'youtube:player-client=android,web,default';
         }
 
         // TIKTOK BYPASS MENGGUNAKAN TIKWM API
@@ -182,12 +183,13 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
         noWarnings: true,
         noCheckCertificate: true,
         ignoreNoFormatsError: true, // Lanjut walau tak ada format video
-        playlistEnd: 10
+        playlistEnd: 10,
+        forceIpv4: true // Paksa IPv4 untuk menghindari blokir IPv6 di VPS
     };
 
-    // Bypass blokir IP YouTube (terutama di VPS/Colab) dengan memicu fallback ke ios dan web player client
+    // Bypass blokir IP YouTube (terutama di VPS/Colab) dengan memicu fallback ke android dan web player client
     if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        options.extractorArgs = 'youtube:player-client=ios,web,default';
+        options.extractorArgs = 'youtube:player-client=android,web,default';
     }
  
     // Gunakan cookies jika tersedia (direkomendasikan untuk bypass blokir IP YouTube/Instagram di VPS)
