@@ -57,7 +57,7 @@ async function getVideoInfo(url) {
 
         // Bypass blokir IP YouTube dengan memicu fallback ke ios dan web player client
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
-            options.extractorArgs = 'youtube:player_client=ios,web,default';
+            options.extractorArgs = 'youtube:player-client=ios,web,default';
         }
 
         // TIKTOK BYPASS MENGGUNAKAN TIKWM API
@@ -187,7 +187,7 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
 
     // Bypass blokir IP YouTube (terutama di VPS/Colab) dengan memicu fallback ke ios dan web player client
     if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        options.extractorArgs = 'youtube:player_client=ios,web,default';
+        options.extractorArgs = 'youtube:player-client=ios,web,default';
     }
  
     // Gunakan cookies jika tersedia (direkomendasikan untuk bypass blokir IP YouTube/Instagram di VPS)
