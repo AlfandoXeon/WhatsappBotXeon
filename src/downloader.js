@@ -63,7 +63,7 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
         
         if (info._images && info._images.length > 0) {
             // Jika Carousel Foto
-            const limit = Math.min(info._images.length, 5);
+            const limit = Math.min(info._images.length, 10);
             for (let i = 0; i < limit; i++) {
                 const imgUrl = info._images[i];
                 const dest = path.join(TEMP_DIR, `media_${timestamp}_${i+1}.webp`);
@@ -96,7 +96,7 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
             if (isEntryImageOnly) {
                 logTable('DOWNLOAD', 'System', `Mendownload Instagram Carousel Foto menggunakan Fetch...`);
                 const downloadedFiles = [];
-                const limit = Math.min(info.entries.length, 5);
+                const limit = Math.min(info.entries.length, 10);
                 for (let i = 0; i < limit; i++) {
                     const entry = info.entries[i];
                     const thumbnailUrl = entry.thumbnails && entry.thumbnails.length > 0
@@ -134,7 +134,7 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
         noWarnings: true,
         noCheckCertificate: true,
         ignoreNoFormatsError: true, // Lanjut walau tak ada format video
-        playlistEnd: 5
+        playlistEnd: 10
     };
 
     if (fs.existsSync(COOKIES_PATH) && url.includes('instagram.com')) {

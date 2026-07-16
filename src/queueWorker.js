@@ -11,7 +11,7 @@ const downloadQueue = async.queue(async (task) => {
     let downloadedPaths = [];
     
     try {
-        await sock.sendMessage(remoteJid, { text: config.messages.downloading }, { quoted: msg });
+        await sock.sendMessage(remoteJid, { text: config.messages.downloading }, { quoted: msg.fakeReply || msg });
         
         logTable('DOWNLOAD', remoteJid, `Mulai mengunduh media dari url: ${url}`);
         downloadedPaths = await downloadMedia(url, type, resolution, info);
@@ -29,7 +29,7 @@ const downloadQueue = async.queue(async (task) => {
             
             // Caption hanya untuk media pertama (index 0)
             const finalCaption = i === 0 ? (title ? `*${title}*\n\n${config.messages.success}` : config.messages.success) : undefined;
-            const quotedOpt = i === 0 ? { quoted: msg } : undefined;
+            const quotedOpt = i === 0 ? { quoted: msg.fakeReply || msg } : undefined;
 
             if (isImage) {
                 await sock.sendMessage(remoteJid, {
@@ -72,7 +72,7 @@ const downloadQueue = async.queue(async (task) => {
         }
     } catch (err) {
         logTable('ERROR', remoteJid, `Task failed: ${err.message}`);
-        await sock.sendMessage(remoteJid, { text: `${config.messages.errSystem} ${err.message}` }, { quoted: msg });
+        await sock.sendMessage(remoteJid, { text: `${config.messages.errSystem} ${err.message}` }, { quoted: msg.fakeReply || msg });
         
         // Report error to Admin/Owner
         try {

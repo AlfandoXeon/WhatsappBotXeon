@@ -4,14 +4,16 @@ module.exports = {
     ownerNumber: "6285764175824", // Masukkan nomor lengkap dengan kode negara, tanpa '+'
     public: true, // Jika false, bot hanya merespons pesan dari owner
     autoRead: true, // Jika true, pesan yang masuk otomatis terbaca (centang biru)
+    menuThumbnail: 'thumbnail/thumbv3.png', // Path ke gambar thumbnail menu bot
     features: [
         { cmd: 'menu', desc: 'Menampilkan daftar menu bot' },
         { cmd: 'ping', desc: 'Cek status respons bot' },
         { cmd: 'status', desc: 'Cek jumlah antrean unduhan saat ini' },
         { cmd: 'play <judul>', desc: 'Cari & download video YouTube (Tampil di Galeri)' },
         { cmd: 'playmusic <judul>', desc: 'Cari & download lagu MP3 dari YouTube' },
-        { cmd: 'dl <link>', desc: 'Download otomatis media dengan kualitas tertinggi (Dokumen)' },
-        { cmd: 'getinfo <link>', desc: 'Melihat informasi durasi dan thumbnail dari link' },
+        { cmd: 'ytdl <link>', desc: 'Download video YouTube kualitas terbaik (Dokumen)' },
+        { cmd: 'tt <link>', desc: 'Download Video / Carousel TikTok kualitas HD (Galeri)' },
+        { cmd: 'ig <link>', desc: 'Download Video / Carousel Foto Instagram (Galeri)' },
         { cmd: 's / sticker', desc: 'Membuat stiker dari gambar/video. Bisa custom nama (ex: #s Pack | Author)' },
         { cmd: 'toimg', desc: 'Mengubah stiker kembali menjadi gambar atau video' },
         { cmd: 'add <nomor>', desc: 'Menambahkan anggota ke grup (Admin Only)' },

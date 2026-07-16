@@ -33,48 +33,48 @@ async function checkAdmin(sock, remoteJid, senderJid) {
 // --- Handler: Add ---
 async function handleAdd(sock, msg, remoteJid, sender, pushName, args) {
     const adminCheck = await checkAdmin(sock, remoteJid, sender);
-    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg });
-    if (!adminCheck.isSenderAdmin && !sender.includes(config.ownerNumber)) return await sock.sendMessage(remoteJid, { text: config.messages.errNotAdmin }, { quoted: msg });
-    if (!adminCheck.isBotAdmin) return await sock.sendMessage(remoteJid, { text: config.messages.errBotNotAdmin }, { quoted: msg });
+    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg.fakeReply || msg });
+    if (!adminCheck.isSenderAdmin && !sender.includes(config.ownerNumber)) return await sock.sendMessage(remoteJid, { text: config.messages.errNotAdmin }, { quoted: msg.fakeReply || msg });
+    if (!adminCheck.isBotAdmin) return await sock.sendMessage(remoteJid, { text: config.messages.errBotNotAdmin }, { quoted: msg.fakeReply || msg });
 
     const num = args.join('').replace(/[^0-9]/g, '');
-    if (!num) return await sock.sendMessage(remoteJid, { text: "❌ Masukkan nomor yang valid. Contoh: `#add 628xxx`" }, { quoted: msg });
+    if (!num) return await sock.sendMessage(remoteJid, { text: "❌ Masukkan nomor yang valid. Contoh: `#add 628xxx`" }, { quoted: msg.fakeReply || msg });
     
     const targetJid = `${num}@s.whatsapp.net`;
     try {
         await sock.groupParticipantsUpdate(remoteJid, [targetJid], "add");
-        await sock.sendMessage(remoteJid, { text: `✅ Berhasil menambahkan @${num}`, mentions: [targetJid] }, { quoted: msg });
+        await sock.sendMessage(remoteJid, { text: `✅ Berhasil menambahkan @${num}`, mentions: [targetJid] }, { quoted: msg.fakeReply || msg });
         logTable('GROUP', pushName, `Menambahkan ${num} ke grup`);
     } catch (err) {
-        await sock.sendMessage(remoteJid, { text: `❌ Gagal menambahkan: ${err.message}` }, { quoted: msg });
+        await sock.sendMessage(remoteJid, { text: `❌ Gagal menambahkan: ${err.message}` }, { quoted: msg.fakeReply || msg });
     }
 }
 
 // --- Handler: Kick ---
 async function handleKick(sock, msg, remoteJid, sender, pushName, mentionedJidList) {
     const adminCheck = await checkAdmin(sock, remoteJid, sender);
-    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg });
-    if (!adminCheck.isSenderAdmin && !sender.includes(config.ownerNumber)) return await sock.sendMessage(remoteJid, { text: config.messages.errNotAdmin }, { quoted: msg });
-    if (!adminCheck.isBotAdmin) return await sock.sendMessage(remoteJid, { text: config.messages.errBotNotAdmin }, { quoted: msg });
+    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg.fakeReply || msg });
+    if (!adminCheck.isSenderAdmin && !sender.includes(config.ownerNumber)) return await sock.sendMessage(remoteJid, { text: config.messages.errNotAdmin }, { quoted: msg.fakeReply || msg });
+    if (!adminCheck.isBotAdmin) return await sock.sendMessage(remoteJid, { text: config.messages.errBotNotAdmin }, { quoted: msg.fakeReply || msg });
 
     if (!mentionedJidList || mentionedJidList.length === 0) {
-        return await sock.sendMessage(remoteJid, { text: "❌ Tag/Mention orang yang ingin dikeluarkan. Contoh: `#kick @user`" }, { quoted: msg });
+        return await sock.sendMessage(remoteJid, { text: "❌ Tag/Mention orang yang ingin dikeluarkan. Contoh: `#kick @user`" }, { quoted: msg.fakeReply || msg });
     }
 
     try {
         await sock.groupParticipantsUpdate(remoteJid, mentionedJidList, "remove");
-        await sock.sendMessage(remoteJid, { text: `✅ Berhasil mengeluarkan anggota.` }, { quoted: msg });
+        await sock.sendMessage(remoteJid, { text: `✅ Berhasil mengeluarkan anggota.` }, { quoted: msg.fakeReply || msg });
         logTable('GROUP', pushName, `Mengeluarkan ${mentionedJidList.length} orang dari grup`);
     } catch (err) {
-        await sock.sendMessage(remoteJid, { text: `❌ Gagal mengeluarkan: ${err.message}` }, { quoted: msg });
+        await sock.sendMessage(remoteJid, { text: `❌ Gagal mengeluarkan: ${err.message}` }, { quoted: msg.fakeReply || msg });
     }
 }
 
 // --- Handler: Tag All ---
 async function handleTagAll(sock, msg, remoteJid, sender, pushName, args) {
     const adminCheck = await checkAdmin(sock, remoteJid, sender);
-    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg });
-    if (!adminCheck.isSenderAdmin && !sender.includes(config.ownerNumber)) return await sock.sendMessage(remoteJid, { text: config.messages.errNotAdmin }, { quoted: msg });
+    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg.fakeReply || msg });
+    if (!adminCheck.isSenderAdmin && !sender.includes(config.ownerNumber)) return await sock.sendMessage(remoteJid, { text: config.messages.errNotAdmin }, { quoted: msg.fakeReply || msg });
 
     const participants = adminCheck.participants;
     const jids = participants.map(p => p.id);
@@ -88,15 +88,15 @@ async function handleTagAll(sock, msg, remoteJid, sender, pushName, args) {
         text += `• @${jid.split('@')[0]}\n`;
     }
 
-    await sock.sendMessage(remoteJid, { text, mentions: jids }, { quoted: msg });
+    await sock.sendMessage(remoteJid, { text, mentions: jids }, { quoted: msg.fakeReply || msg });
     logTable('GROUP', pushName, `Melakukan TagAll di grup`);
 }
 
 // --- Handler: Hide Tag ---
 async function handleHideTag(sock, msg, remoteJid, sender, pushName, args) {
     const adminCheck = await checkAdmin(sock, remoteJid, sender);
-    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg });
-    if (!adminCheck.isSenderAdmin && !sender.includes(config.ownerNumber)) return await sock.sendMessage(remoteJid, { text: config.messages.errNotAdmin }, { quoted: msg });
+    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg.fakeReply || msg });
+    if (!adminCheck.isSenderAdmin && !sender.includes(config.ownerNumber)) return await sock.sendMessage(remoteJid, { text: config.messages.errNotAdmin }, { quoted: msg.fakeReply || msg });
 
     const participants = adminCheck.participants;
     const jids = participants.map(p => p.id);
@@ -109,10 +109,10 @@ async function handleHideTag(sock, msg, remoteJid, sender, pushName, args) {
 // --- Handler: Jadian ---
 async function handleJadian(sock, msg, remoteJid, sender, pushName) {
     const adminCheck = await checkAdmin(sock, remoteJid, sender);
-    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg });
+    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg.fakeReply || msg });
 
     const participants = adminCheck.participants;
-    if (participants.length < 2) return await sock.sendMessage(remoteJid, { text: "❌ Anggota grup kurang!" }, { quoted: msg });
+    if (participants.length < 2) return await sock.sendMessage(remoteJid, { text: "❌ Anggota grup kurang!" }, { quoted: msg.fakeReply || msg });
 
     const random1 = participants[Math.floor(Math.random() * participants.length)].id;
     let random2 = participants[Math.floor(Math.random() * participants.length)].id;
@@ -121,25 +121,25 @@ async function handleJadian(sock, msg, remoteJid, sender, pushName) {
     }
 
     const text = `Ciee.. 💕\nSepertinya @${random1.split('@')[0]} cocok nih sama @${random2.split('@')[0]}!\nPJ nya dong!! 🥳`;
-    await sock.sendMessage(remoteJid, { text, mentions: [random1, random2] }, { quoted: msg });
+    await sock.sendMessage(remoteJid, { text, mentions: [random1, random2] }, { quoted: msg.fakeReply || msg });
     logTable('GAME', pushName, `Jadian terpicu di grup`);
 }
 
 // --- Handler: Suit ---
 async function handleSuit(sock, msg, remoteJid, sender, pushName, mentionedJidList) {
     const adminCheck = await checkAdmin(sock, remoteJid, sender);
-    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg });
+    if (!adminCheck.isGroup) return await sock.sendMessage(remoteJid, { text: config.messages.errNotGroup }, { quoted: msg.fakeReply || msg });
 
     if (!mentionedJidList || mentionedJidList.length === 0) {
-        return await sock.sendMessage(remoteJid, { text: "❌ Tag/Mention orang yang ingin ditantang. Contoh: `#suit @user`" }, { quoted: msg });
+        return await sock.sendMessage(remoteJid, { text: "❌ Tag/Mention orang yang ingin ditantang. Contoh: `#suit @user`" }, { quoted: msg.fakeReply || msg });
     }
 
     const target = mentionedJidList[0];
-    if (target === sender) return await sock.sendMessage(remoteJid, { text: "❌ Anda tidak bisa menantang diri sendiri!" }, { quoted: msg });
+    if (target === sender) return await sock.sendMessage(remoteJid, { text: "❌ Anda tidak bisa menantang diri sendiri!" }, { quoted: msg.fakeReply || msg });
     
     // Cek jika sudah ada game
     if (global.gameStates[remoteJid]) {
-        return await sock.sendMessage(remoteJid, { text: "❌ Masih ada sesi suit yang berlangsung di grup ini!" }, { quoted: msg });
+        return await sock.sendMessage(remoteJid, { text: "❌ Masih ada sesi suit yang berlangsung di grup ini!" }, { quoted: msg.fakeReply || msg });
     }
 
     // Buat State
@@ -158,7 +158,7 @@ async function handleSuit(sock, msg, remoteJid, sender, pushName, mentionedJidLi
     };
 
     const text = `🎮 *SUIT MATCH* 🎮\n\n@${sender.split('@')[0]} menantang @${target.split('@')[0]}!\n\nKalian berdua silakan *PC / Private Chat* ke Bot dengan mengetik pilihan kalian:\n- \`#batu\`\n- \`#gunting\`\n- \`#kertas\`\n\nWaktu: 3 Menit!`;
-    await sock.sendMessage(remoteJid, { text, mentions: [sender, target] }, { quoted: msg });
+    await sock.sendMessage(remoteJid, { text, mentions: [sender, target] }, { quoted: msg.fakeReply || msg });
     logTable('GAME', pushName, `Memulai suit dengan target ${target}`);
 }
 
@@ -185,13 +185,13 @@ async function handleSuitAnswer(sock, msg, sender, choice) {
     }
 
     if (!foundGroupId) {
-        return await sock.sendMessage(sender, { text: "❌ Anda sedang tidak berada dalam sesi suit yang menunggu jawaban Anda." }, { quoted: msg });
+        return await sock.sendMessage(sender, { text: "❌ Anda sedang tidak berada dalam sesi suit yang menunggu jawaban Anda." }, { quoted: msg.fakeReply || msg });
     }
 
     const game = global.gameStates[foundGroupId];
     game[playerKey] = choice;
 
-    await sock.sendMessage(sender, { text: `✅ Anda telah memilih: *${choice.toUpperCase()}*` }, { quoted: msg });
+    await sock.sendMessage(sender, { text: `✅ Anda telah memilih: *${choice.toUpperCase()}*` }, { quoted: msg.fakeReply || msg });
 
     if (game.choice1 && game.choice2) {
         clearTimeout(game.timer);

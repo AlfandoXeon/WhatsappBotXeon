@@ -65,14 +65,14 @@ async function handleCreateSticker(sock, msg, buffer, packName, authorName, send
 
         const webpBuffer = await sticker.toBuffer();
         
-        await sock.sendMessage(msg.key.remoteJid, { sticker: webpBuffer }, { quoted: msg });
+        await sock.sendMessage(msg.key.remoteJid, { sticker: webpBuffer }, { quoted: msg.fakeReply || msg });
         logTable('SUCCESS', sender, `Stiker berhasil dibuat (${pName} | ${aName})`);
     } catch (err) {
         logTable('ERROR', sender, `Gagal membuat stiker: ${err.message}`);
         // Fallback or silent fail for auto-trigger
     }
 }
-
+ 
 /**
  * Mengubah stiker menjadi gambar atau video
  */
@@ -93,12 +93,12 @@ async function handleStickerToMedia(sock, msg, buffer, isAnimated, sender) {
             // Animasi WebP -> MP4
             execSync(`ffmpeg -i "${inputPath}" -pix_fmt yuv420p -c:v libx264 -movflags +faststart -filter:v "scale=trunc(iw/2)*2:trunc(ih/2)*2" "${outputPath}"`);
             const mp4Buf = fs.readFileSync(outputPath);
-            await sock.sendMessage(msg.key.remoteJid, { video: mp4Buf, caption: "Ini videonya kak! :)" }, { quoted: msg });
+            await sock.sendMessage(msg.key.remoteJid, { video: mp4Buf, caption: "Ini videonya kak! :)" }, { quoted: msg.fakeReply || msg });
         } else {
             // Statis WebP -> JPG
             execSync(`ffmpeg -i "${inputPath}" "${outputPath}"`);
             const jpgBuf = fs.readFileSync(outputPath);
-            await sock.sendMessage(msg.key.remoteJid, { image: jpgBuf, caption: "Ini gambarnya kak! :)" }, { quoted: msg });
+            await sock.sendMessage(msg.key.remoteJid, { image: jpgBuf, caption: "Ini gambarnya kak! :)" }, { quoted: msg.fakeReply || msg });
         }
         logTable('SUCCESS', sender, `StickerToMedia berhasil`);
     } catch (err) {

@@ -61,8 +61,17 @@ async function handleMessage(sock, m) {
         return;
     }
 
-    // Teruskan eksekusi ke router di xeon.js
-    await commandRouter(sock, msg, command, args, text, sender, remoteJid, pushName, isOwner);
+    // Teruskan eksekusi ke router di xeon.js dengan try-catch untuk mencegah crash
+    try {
+        await commandRouter(sock, msg, command, args, text, sender, remoteJid, pushName, isOwner);
+    } catch (routerErr) {
+        logTable('ERROR', pushName, `Router execution failed: ${routerErr.message}`);
+        try {
+            await sock.sendMessage(remoteJid, { text: `❌ Terjadi kesalahan saat memproses perintah #${command}: ${routerErr.message}` }, { quoted: msg });
+        } catch (sendErr) {
+            logTable('ERROR', pushName, `Gagal mengirim pesan error: ${sendErr.message}`);
+        }
+    }
 }
 
 module.exports = {

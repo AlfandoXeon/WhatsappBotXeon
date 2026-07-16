@@ -4,6 +4,9 @@ const { addToQueue, getQueuePosition } = require('./src/queueWorker');
 const { logTable } = require('./src/utils/logger');
 const { downloadMediaMessage, handleCreateSticker, handleStickerToMedia } = require('./src/stickerHandler');
 const { handleAdd, handleKick, handleTagAll, handleHideTag, handleJadian, handleSuit } = require('./src/groupHandler');
+const { handleYouTube } = require('./src/handlers/youtube');
+const { handleTikTok } = require('./src/handlers/tiktok');
+const { handleInstagram } = require('./src/handlers/instagram');
 const config = require('./config');
 const ytSearch = require('yt-search');
 
@@ -19,6 +22,47 @@ function getGreeting() {
  * Router utama untuk semua perintah bot (Switch Case).
  */
 async function commandRouter(sock, msg, command, args, text, sender, remoteJid, pushName, isOwner) {
+    // 1. Membuat Global Fake Reply (kutipan seolah berasal dari pengirim perintah)
+    const fakeReplyText = {
+        menu: 'daftar menu XeonBot',
+        ping: 'Mengecek responsivitas bot ',
+        status: 'Mengecek status antrean bot ',
+        ytdl: 'unduhan YouTube ',
+        tt: 'unduhan TikTok 📥',
+        ig: 'unduhan Instagram 📸',
+        add: ' penambahan anggota grup ➕',
+        kick: 'pengeluaran anggota grup ➖',
+        tagall: 'seluruh anggota grup ',
+        hidetag: 'pengumuman tersembunyi ',
+        jadian: 'mencari jodoh acak di grup',
+        suit: 'menantang permainan batu-gunting-kertas ',
+        play: 'mencari dan memutar video YouTube ',
+        playmusic: 'mencari dan memutar lagu YouTube ',
+        playaudio: 'mencari dan memutar lagu YouTube ',
+        s: 'membuat stiker baru ',
+        sticker: 'Membuat stiker baru ',
+        toimg: 'mengubah stiker menjadi media '
+    }[command] || `menjalankan perintah #${command} `;
+
+    const fakeReply = {
+        key: {
+            remoteJid: remoteJid,
+            fromMe: false,
+            id: 'XEONFAKE_' + Date.now().toString(36).toUpperCase()
+        },
+        message: {
+            conversation: fakeReplyText
+        }
+    };
+
+    // Hanya sertakan participant jika berada di dalam grup (@g.us)
+    if (remoteJid.endsWith('@g.us')) {
+        fakeReply.key.participant = sender;
+    }
+
+    // Tempelkan ke msg asli agar bisa digunakan oleh sub-handler lain
+    msg.fakeReply = fakeReply;
+
     switch (command) {
         case 'menu': {
             logTable('COMMAND', pushName, `[menu] executed`);
@@ -31,92 +75,46 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
                 `${menuList}\n\n` +
                 `*╰──────────────────────*\n\n` +
                 `> _AlfandoXeon2026_`;
-            await sock.sendMessage(remoteJid, { text: menuMsg }, { quoted: msg });
+
+            const fs = require('fs');
+            const path = require('path');
+
+            const thumbPath = path.join(__dirname, config.menuThumbnail || 'thumbnail/thumbv3.png');
+
+            if (fs.existsSync(thumbPath)) {
+                await sock.sendMessage(remoteJid, {
+                    image: fs.readFileSync(thumbPath),
+                    caption: menuMsg
+                }, { quoted: fakeReply });
+            } else {
+                await sock.sendMessage(remoteJid, { text: menuMsg }, { quoted: fakeReply });
+            }
             break;
         }
 
         case 'ping':
             logTable('COMMAND', pushName, `[${command}] executed`);
-            await sock.sendMessage(remoteJid, { text: 'Pong! 🏓 XeonBot online.' }, { quoted: msg });
+            await sock.sendMessage(remoteJid, { text: 'Pong! 🏓 XeonBot online.' }, { quoted: fakeReply });
             break;
 
         case 'status':
             logTable('COMMAND', pushName, `[${command}] executed`);
             const queuePos = getQueuePosition();
-            await sock.sendMessage(remoteJid, { text: `📊 Status Antrean: ${queuePos} tugas sedang menunggu.` }, { quoted: msg });
+            await sock.sendMessage(remoteJid, { text: `📊 Status Antrean: ${queuePos} tugas sedang menunggu.` }, { quoted: fakeReply });
             break;
 
-        case 'dl':
-        case 'download':
-        case 'downloadaudio':
-        case 'getinfo': {
-            const type = command === 'downloadaudio' ? 'audio' : command === 'getinfo' ? 'info' : 'video';
-            const cmdString = `[${command}]`;
+        case 'ytdl': {
+            await handleYouTube(sock, msg, remoteJid, sender, pushName, args);
+            break;
+        }
 
-            const urlText = args.join(' ').trim();
-            logTable('COMMAND', pushName, `${cmdString} ${urlText.substring(0, 30)}...`);
+        case 'tt': {
+            await handleTikTok(sock, msg, remoteJid, sender, pushName, args);
+            break;
+        }
 
-            const url = extractUrl(urlText);
-            if (!url) {
-                return await sock.sendMessage(remoteJid, { text: config.messages.errLink }, { quoted: msg });
-            }
-
-            const platform = getPlatform(url);
-            if (!platform) {
-                return await sock.sendMessage(remoteJid, { text: config.messages.errPlatform }, { quoted: msg });
-            }
-
-            try {
-                logTable('INFO', pushName, `Mengambil info media: ${url}`);
-                await sock.sendMessage(remoteJid, { text: config.messages.waitInfo }, { quoted: msg });
-                const info = await getVideoInfo(url);
-
-                const duration = info.duration || 0;
-                if (duration > 900) {
-                    return await sock.sendMessage(remoteJid, { text: config.messages.errDuration }, { quoted: msg });
-                }
-
-                const infoText = `📋 *INFO MEDIA* 📋\n\n` +
-                    `*Judul:* ${info.title || '-'}\n` +
-                    `*Durasi:* ${duration} detik\n` +
-                    `*Uploader:* ${info.uploader || '-'}\n` +
-                    `*Platform:* ${platform}\n\n` +
-                    (type === 'info' ? `Gunakan #dl atau #downloadaudio untuk mengunduh.` : `Mengunduh format terbaik...`);
-
-                if (info.thumbnail) {
-                    await sock.sendMessage(remoteJid, { image: { url: info.thumbnail }, caption: infoText }, { quoted: msg });
-                } else {
-                    await sock.sendMessage(remoteJid, { text: infoText }, { quoted: msg });
-                }
-
-                if (type === 'info') return;
-
-                // Masuk antrean langsung
-                const currentQueuePos = getQueuePosition();
-                let queueMsg = config.messages.waitQueue;
-                if (currentQueuePos > 0) {
-                    queueMsg += `\nUrutan Anda: ${currentQueuePos + 1}`;
-                }
-                await sock.sendMessage(remoteJid, { text: queueMsg }, { quoted: msg });
-
-                logTable('QUEUE', pushName, `Tugas ditambahkan ke antrean. Posisi: ${currentQueuePos + 1}`);
-
-                addToQueue({
-                    url: url,
-                    type: type,
-                    resolution: '1080', // Asumsi ambil yang tertinggi
-                    sendAsDocument: true, // Kirim sebagai dokumen
-                    sock: sock,
-                    remoteJid: remoteJid,
-                    msg: msg,
-                    title: info.title || 'Media_XeonBot',
-                    info: info // Pass the full JSON metadata
-                });
-
-            } catch (err) {
-                logTable('ERROR', pushName, `Gagal memproses pesan: ${err.message}`);
-                await sock.sendMessage(remoteJid, { text: `❌ Terjadi kesalahan: ${err.message}` }, { quoted: msg });
-            }
+        case 'ig': {
+            await handleInstagram(sock, msg, remoteJid, sender, pushName, args);
             break;
         }
 
@@ -128,17 +126,17 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
             logTable('COMMAND', pushName, `${cmdString} ${query}`);
 
             if (!query) {
-                return await sock.sendMessage(remoteJid, { text: '❌ Harap masukkan kata kunci pencarian. Contoh: `#play orange 7`' }, { quoted: msg });
+                return await sock.sendMessage(remoteJid, { text: '❌ Harap masukkan kata kunci pencarian. Contoh: `#play orange 7`' }, { quoted: fakeReply });
             }
 
             try {
-                await sock.sendMessage(remoteJid, { text: `${config.messages.search} ${query}...` }, { quoted: msg });
+                await sock.sendMessage(remoteJid, { text: `${config.messages.search} ${query}...` }, { quoted: fakeReply });
 
                 const searchResult = await ytSearch(query);
                 const topVideo = searchResult.videos[0];
 
                 if (!topVideo) {
-                    return await sock.sendMessage(remoteJid, { text: config.messages.errNotFound }, { quoted: msg });
+                    return await sock.sendMessage(remoteJid, { text: config.messages.errNotFound }, { quoted: fakeReply });
                 }
 
                 const url = topVideo.url;
@@ -153,9 +151,9 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
                     `Mengunduh media...`;
 
                 if (topVideo.thumbnail) {
-                    await sock.sendMessage(remoteJid, { image: { url: topVideo.thumbnail }, caption: infoText }, { quoted: msg });
+                    await sock.sendMessage(remoteJid, { image: { url: topVideo.thumbnail }, caption: infoText }, { quoted: fakeReply });
                 } else {
-                    await sock.sendMessage(remoteJid, { text: infoText }, { quoted: msg });
+                    await sock.sendMessage(remoteJid, { text: infoText }, { quoted: fakeReply });
                 }
 
                 const currentQueuePos = getQueuePosition();
@@ -163,7 +161,7 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
                 if (currentQueuePos > 0) {
                     queueMsg += `\nUrutan Anda: ${currentQueuePos + 1}`;
                 }
-                await sock.sendMessage(remoteJid, { text: queueMsg }, { quoted: msg });
+                await sock.sendMessage(remoteJid, { text: queueMsg }, { quoted: fakeReply });
 
                 logTable('QUEUE', pushName, `Tugas play ditambahkan ke antrean. Posisi: ${currentQueuePos + 1}`);
 
@@ -174,13 +172,13 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
                     sendAsDocument: false, // Tampil di galeri
                     sock: sock,
                     remoteJid: remoteJid,
-                    msg: msg,
+                    msg: fakeReply,
                     title: topVideo.title
                 });
 
             } catch (err) {
                 logTable('ERROR', pushName, `Gagal memproses pencarian: ${err.message}`);
-                await sock.sendMessage(remoteJid, { text: `❌ Terjadi kesalahan saat mencari: ${err.message}` }, { quoted: msg });
+                await sock.sendMessage(remoteJid, { text: `❌ Terjadi kesalahan saat mencari: ${err.message}` }, { quoted: fakeReply });
             }
             break;
         }
@@ -197,7 +195,7 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
             const hasMedia = isImage || isVideo || isQuotedImage || isQuotedVideo;
 
             if (!hasMedia) {
-                return await sock.sendMessage(remoteJid, { text: "❌ Kirim/reply gambar atau video (max 6s) dengan caption #sticker" }, { quoted: msg });
+                return await sock.sendMessage(remoteJid, { text: "❌ Kirim/reply gambar atau video (max 6s) dengan caption #sticker" }, { quoted: fakeReply });
             }
 
             const mediaType = (isImage || isQuotedImage) ? 'image' : 'video';
@@ -205,7 +203,7 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
             // Cek durasi video
             const videoData = isVideo || isQuotedVideo;
             if (mediaType === 'video' && videoData.seconds > 6) {
-                return await sock.sendMessage(remoteJid, { text: "❌ Durasi video maksimal 6 detik untuk stiker." }, { quoted: msg });
+                return await sock.sendMessage(remoteJid, { text: "❌ Durasi video maksimal 6 detik untuk stiker." }, { quoted: fakeReply });
             }
 
             // Parsing Pack & Author name dari arguments "PackName | AuthorName"
@@ -222,7 +220,7 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
 
             const buffer = await downloadMediaMessage(msg, mediaType);
             if (!buffer) {
-                return await sock.sendMessage(remoteJid, { text: "❌ Gagal mengunduh media." }, { quoted: msg });
+                return await sock.sendMessage(remoteJid, { text: "❌ Gagal mengunduh media." }, { quoted: fakeReply });
             }
 
             await handleCreateSticker(sock, msg, buffer, packName, authorName, sender);
@@ -236,7 +234,7 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
             const isSticker = msg.message.stickerMessage;
 
             if (!isQuotedSticker && !isSticker) {
-                return await sock.sendMessage(remoteJid, { text: "❌ Reply stiker dengan command #toimg" }, { quoted: msg });
+                return await sock.sendMessage(remoteJid, { text: "❌ Reply stiker dengan command #toimg" }, { quoted: fakeReply });
             }
 
             const stickerData = isSticker || isQuotedSticker;
@@ -244,7 +242,7 @@ async function commandRouter(sock, msg, command, args, text, sender, remoteJid, 
 
             const buffer = await downloadMediaMessage(msg, 'sticker');
             if (!buffer) {
-                return await sock.sendMessage(remoteJid, { text: "❌ Gagal mengunduh stiker." }, { quoted: msg });
+                return await sock.sendMessage(remoteJid, { text: "❌ Gagal mengunduh stiker." }, { quoted: fakeReply });
             }
 
             await handleStickerToMedia(sock, msg, buffer, isAnimated, sender);
