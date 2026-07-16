@@ -21,6 +21,11 @@ async function getVideoInfo(url) {
             options.cookies = COOKIES_PATH;
         }
 
+        // Bypass blokir IP YouTube dengan memicu fallback ke web player client
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            options.extractorArgs = 'youtube:player_client=web,default';
+        }
+
         // TIKTOK BYPASS MENGGUNAKAN TIKWM API
         if (url.includes('tiktok.com')) {
             try {
@@ -136,6 +141,11 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
         ignoreNoFormatsError: true, // Lanjut walau tak ada format video
         playlistEnd: 10
     };
+
+    // Bypass blokir IP YouTube (terutama di VPS/Colab) dengan memicu fallback ke web player client
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        options.extractorArgs = 'youtube:player_client=web,default';
+    }
 
     if (fs.existsSync(COOKIES_PATH) && url.includes('instagram.com')) {
         options.cookies = COOKIES_PATH;
