@@ -17,7 +17,7 @@ async function updateYtDlpBinary() {
         const isWindows = process.platform === 'win32';
         const binaryName = isWindows ? 'yt-dlp.exe' : 'yt-dlp';
         const binaryPath = path.join(__dirname, '../node_modules/yt-dlp-exec/bin', binaryName);
-        
+
         // Buat folder bin jika belum ada
         const binDir = path.dirname(binaryPath);
         if (!fs.existsSync(binDir)) {
@@ -27,10 +27,10 @@ async function updateYtDlpBinary() {
         const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${binaryName}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        
+
         const buffer = await res.arrayBuffer();
         fs.writeFileSync(binaryPath, Buffer.from(buffer));
-        
+
         if (!isWindows) {
             fs.chmodSync(binaryPath, '755'); // Beri izin eksekusi di Linux/VPS/Colab
         }
@@ -46,13 +46,13 @@ function writeErrorLog(url, action, err, options) {
     try {
         const logPath = path.join(__dirname, '../ytdl_error.log');
         const timestamp = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
-        
+
         let logContent = `==================================================\n`;
         logContent += `TIMESTAMP   : ${timestamp} (WIB)\n`;
         logContent += `ACTION      : ${action}\n`;
         logContent += `URL         : ${url}\n`;
         logContent += `ERROR       : ${err.message || err}\n`;
-        
+
         if (err.stdout) {
             logContent += `STDOUT      :\n${err.stdout}\n`;
         }
@@ -62,27 +62,107 @@ function writeErrorLog(url, action, err, options) {
         if (err.stack) {
             logContent += `STACK TRACE :\n${err.stack}\n`;
         }
-        
+
         logContent += `OPTIONS     : ${JSON.stringify(options, null, 2)}\n`;
         logContent += `==================================================\n\n`;
-        
+
         fs.appendFileSync(logPath, logContent, 'utf8');
         logTable('INFO', 'System', `Detail log error disimpan di: ytdl_error.log`);
     } catch (e) {
         logTable('ERROR', 'System', `Gagal menulis berkas log error: ${e.message}`);
     }
 }
- 
+
+async function downloadFromCobalt(url, isAudio) {
+    // List instance fallback jika instances.cobalt.tools gagal di-fetch
+    const defaultInstances = [
+        'https://api.cobalt.tools',
+        'https://cobalt.api.red.cutie.cafe',
+        'https://co.wukko.me',
+        'https://cobalt.kudo.lol',
+        'https://api.cobalt.run'
+    ];
+
+    let instances = [...defaultInstances];
+    try {
+        logTable('INFO', 'System', 'Mengambil daftar instance Cobalt aktif...');
+        const res = await fetch('https://instances.cobalt.tools/');
+        if (res.ok) {
+            const list = await res.json();
+            const activeUrls = list
+                .filter(item => item.api && item.api.online)
+                .map(item => item.api.url);
+            if (activeUrls.length > 0) {
+                instances = [...activeUrls, ...defaultInstances];
+            }
+        }
+    } catch (e) {
+        logTable('WARN', 'System', 'Gagal memuat instance list dari instances.cobalt.tools, menggunakan default list.');
+    }
+
+    // Coba setiap instance satu per satu
+    for (const apiInstance of instances) {
+        try {
+            const cleanApiUrl = apiInstance.endsWith('/') ? apiInstance.slice(0, -1) : apiInstance;
+            logTable('INFO', 'System', `Mencoba mengunduh via Cobalt instance: ${cleanApiUrl}`);
+
+            const response = await fetch(`${cleanApiUrl}/api/json`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                body: JSON.stringify({
+                    url: url,
+                    videoQuality: "720",
+                    isAudioOnly: isAudio
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Instance returned status ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data.status === 'error') {
+                throw new Error(data.text || "Cobalt returned an error status");
+            }
+
+            if (!data.url) {
+                throw new Error("Tautan unduhan direct tidak ditemukan dalam respons Cobalt");
+            }
+
+            const timestamp = Date.now();
+            const ext = isAudio ? 'mp3' : 'mp4';
+            const outPath = path.join(TEMP_DIR, `media_${timestamp}_1.${ext}`);
+
+            logTable('INFO', 'System', `Mulai mengambil stream file dari CDN Cobalt...`);
+            const mediaRes = await fetch(data.url);
+            if (!mediaRes.ok) throw new Error(`Gagal mengunduh berkas media dari CDN Cobalt`);
+
+            const buffer = await mediaRes.arrayBuffer();
+            fs.writeFileSync(outPath, Buffer.from(buffer));
+
+            logTable('SUCCESS', 'System', `Berhasil mengunduh media via Cobalt: media_${timestamp}_1.${ext}`);
+            return [outPath];
+        } catch (err) {
+            logTable('WARN', 'System', `Cobalt instance ${apiInstance} gagal: ${err.message}`);
+        }
+    }
+    throw new Error("Semua instance Cobalt gagal memproses video ini.");
+}
+
 async function downloadFromY2Mate(url, isAudio) {
     try {
         logTable('INFO', 'System', 'Mencoba mengunduh video menggunakan fallback Y2Mate Scraper...');
-        
+
         // 1. Ekstrak Video ID
         const idRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
         const match = url.match(idRegex);
         if (!match) throw new Error("Format URL YouTube tidak valid");
         const videoId = match[1];
- 
+
         // 2. Ambil token/key analisis dari Y2Mate
         const analyzeUrl = 'https://www.y2mate.com/mates/en/analyze/ajax';
         const analyzeBody = querystring.stringify({
@@ -90,7 +170,7 @@ async function downloadFromY2Mate(url, isAudio) {
             q_auto: 0,
             ajax: 1
         });
- 
+
         const analyzeRes = await fetch(analyzeUrl, {
             method: 'POST',
             headers: {
@@ -100,26 +180,26 @@ async function downloadFromY2Mate(url, isAudio) {
             },
             body: analyzeBody
         });
- 
+
         if (!analyzeRes.ok) throw new Error(`Gagal menghubungi server Y2Mate (Status ${analyzeRes.status})`);
         const analyzeData = await analyzeRes.json();
-        
+
         if (analyzeData.status !== 'success' || !analyzeData.result) {
             throw new Error("Gagal menganalisis video di Y2Mate");
         }
- 
+
         const html = analyzeData.result;
-        
+
         // 3. Cari k-parameter untuk kualitas yang diinginkan
         let k = '';
         let ftype = isAudio ? 'mp3' : 'mp4';
         let fquality = isAudio ? '128k' : '360p'; // default 360p video atau 128k audio
- 
+
         const submitMatches = [...html.matchAll(/ajaxSubmit\('([^']+)',\s*'([^']+)'\)/g)];
         if (submitMatches.length === 0) {
             throw new Error("Gagal mengambil k-parameter dari Y2Mate");
         }
- 
+
         if (isAudio) {
             const mp3Match = submitMatches.find(m => {
                 const idx = html.indexOf(m[0]);
@@ -135,7 +215,7 @@ async function downloadFromY2Mate(url, isAudio) {
                 const snippet = html.substring(idx - 200, idx + 200);
                 return snippet.includes('360p') && snippet.includes('.mp4');
             });
-            
+
             if (!videoMatch) {
                 videoMatch = submitMatches.find(m => {
                     const idx = html.indexOf(m[0]);
@@ -143,7 +223,7 @@ async function downloadFromY2Mate(url, isAudio) {
                     return snippet.includes('720p') && snippet.includes('.mp4');
                 });
             }
- 
+
             if (!videoMatch) {
                 videoMatch = submitMatches.find(m => {
                     const idx = html.indexOf(m[0]);
@@ -151,12 +231,12 @@ async function downloadFromY2Mate(url, isAudio) {
                     return snippet.includes('.mp4');
                 });
             }
- 
+
             k = videoMatch ? videoMatch[2] : submitMatches[0][2];
             ftype = 'mp4';
             fquality = videoMatch ? (html.substring(html.indexOf(videoMatch[0]) - 200, html.indexOf(videoMatch[0]) + 200).match(/\d+p/) || ['360p'])[0].replace('p', '') : '360';
         }
- 
+
         // 4. Konversi / dapatkan link unduhan direct
         const convertUrl = 'https://www.y2mate.com/mates/en/convert';
         const convertBody = querystring.stringify({
@@ -169,7 +249,7 @@ async function downloadFromY2Mate(url, isAudio) {
             fquality: fquality,
             k: k
         });
- 
+
         const convertRes = await fetch(convertUrl, {
             method: 'POST',
             headers: {
@@ -179,30 +259,30 @@ async function downloadFromY2Mate(url, isAudio) {
             },
             body: convertBody
         });
- 
+
         if (!convertRes.ok) throw new Error(`Gagal konversi link di Y2Mate (Status ${convertRes.status})`);
         const convertData = await convertRes.json();
- 
+
         if (convertData.status !== 'success' || !convertData.result) {
             throw new Error("Gagal mendapatkan link konversi dari Y2Mate");
         }
- 
+
         const dlinkMatch = convertData.result.match(/href="([^"]+)"/);
         if (!dlinkMatch) throw new Error("Link unduhan langsung tidak ditemukan dalam respons Y2Mate");
         const directLink = dlinkMatch[1].replace(/&amp;/g, '&');
- 
+
         // 5. Unduh berkasnya ke folder TEMP
         const ext = ftype;
         const outFileName = `media_${timestamp}_1.${ext}`;
         const outPath = path.join(TEMP_DIR, outFileName);
- 
+
         logTable('INFO', 'System', `Mulai mengunduh file media langsung dari CDN Y2Mate...`);
         const mediaRes = await fetch(directLink);
         if (!mediaRes.ok) throw new Error(`Gagal mengunduh file dari CDN (Status ${mediaRes.status})`);
- 
+
         const mediaBuffer = await mediaRes.arrayBuffer();
         fs.writeFileSync(outPath, Buffer.from(mediaBuffer));
- 
+
         logTable('SUCCESS', 'System', `File berhasil diunduh via Y2Mate: ${outFileName}`);
         return [outPath];
     } catch (err) {
@@ -210,7 +290,7 @@ async function downloadFromY2Mate(url, isAudio) {
         throw err;
     }
 }
- 
+
 async function getVideoInfo(url) {
     try {
         const options = {
@@ -220,7 +300,7 @@ async function getVideoInfo(url) {
             ignoreNoFormatsError: true, // Penting untuk IG Slide Foto
             forceIpv4: true // Paksa IPv4 untuk menghindari blokir IPv6 di VPS
         };
-        
+
         // Gunakan cookies jika tersedia (sangat direkomendasikan untuk bypass blokir IP YouTube/Instagram di VPS)
         if (fs.existsSync(COOKIES_PATH) && (url.includes('instagram.com') || url.includes('youtube.com') || url.includes('youtu.be'))) {
             options.cookies = COOKIES_PATH;
@@ -258,7 +338,7 @@ async function getVideoInfo(url) {
     } catch (err) {
         // Tulis detail log error ke berkas log utama
         writeErrorLog(url, 'GET_VIDEO_INFO', err, options);
- 
+
         // Cek jika error format dan belum pernah update biner
         if (err.message.includes('No video formats found') && !global.hasUpdatedYtDlp) {
             global.hasUpdatedYtDlp = true;
@@ -268,27 +348,27 @@ async function getVideoInfo(url) {
                 return await getVideoInfo(url); // Coba ulang sekali lagi
             }
         }
- 
-        // FALLBACK KEDUA: Jika yt-dlp gagal mem-bypass blokir YouTube, coba gunakan Y2Mate API Scraper
+
+        // FALLBACK KEDUA: Jika yt-dlp gagal mem-bypass blokir YouTube, coba gunakan Cobalt/Y2Mate
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
             try {
-                logTable('WARN', 'System', 'yt-dlp diblokir YouTube, beralih menggunakan Y2Mate Scraper...');
+                logTable('WARN', 'System', 'yt-dlp diblokir YouTube, menggunakan mock info fallback...');
                 const idRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
                 const match = url.match(idRegex);
                 const videoId = match ? match[1] : '';
                 return {
-                    title: "YouTube Video (Y2Mate Fallback)",
+                    title: "YouTube Video (API Fallback)",
                     duration: 0,
                     uploader: "YouTube",
                     thumbnail: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '',
-                    _is_y2mate: true,
+                    _is_fallback_api: true,
                     _video_id: videoId
                 };
             } catch (e) {
-                logTable('ERROR', 'System', `Fallback Y2Mate juga gagal: ${e.message}`);
+                logTable('ERROR', 'System', `Mock info fallback gagal: ${e.message}`);
             }
         }
- 
+
         logTable('ERROR', 'System', `Error getting info for ${url}: ${err.message}`);
         throw err;
     }
@@ -299,22 +379,27 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
     const timestamp = Date.now();
     const outputPath = path.join(TEMP_DIR, `media_${timestamp}_%(autonumber)s.%(ext)s`);
 
-    // FALLBACK Y2MATE (Jika video info diselamatkan oleh Y2Mate)
-    if (info && info._is_y2mate) {
-        return await downloadFromY2Mate(url, isAudio);
+    // FALLBACK API (Jika video info diselamatkan oleh mock API)
+    if (info && info._is_fallback_api) {
+        try {
+            return await downloadFromCobalt(url, isAudio);
+        } catch (e) {
+            logTable('WARN', 'System', `Cobalt gagal, mencoba Y2Mate sebagai final fallback...`);
+            return await downloadFromY2Mate(url, isAudio);
+        }
     }
- 
+
     // JALUR CEPAT TIKTOK (Menggunakan Direct Link TikWM)
     if (info && info._is_tikwm) {
         logTable('DOWNLOAD', 'System', `Mendownload dari direct link TikWM untuk: ${url}`);
         const downloadedFiles = [];
-        
+
         if (info._images && info._images.length > 0) {
             // Jika Carousel Foto
             const limit = Math.min(info._images.length, 10);
             for (let i = 0; i < limit; i++) {
                 const imgUrl = info._images[i];
-                const dest = path.join(TEMP_DIR, `media_${timestamp}_${i+1}.webp`);
+                const dest = path.join(TEMP_DIR, `media_${timestamp}_${i + 1}.webp`);
                 const res = await fetch(imgUrl);
                 const buffer = await res.arrayBuffer();
                 fs.writeFileSync(dest, Buffer.from(buffer));
@@ -330,17 +415,17 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
             fs.writeFileSync(dest, Buffer.from(buffer));
             downloadedFiles.push(dest);
         }
-        
+
     }
 
     // JALUR CEPAT INSTAGRAM (Jika isi postingan hanya foto / carousel foto)
     if (url.includes('instagram.com') && info) {
         const isImageOnly = !info.formats || info.formats.length === 0;
-        
+
         if (info.entries && info.entries.length > 0) {
             const firstEntry = info.entries[0];
             const isEntryImageOnly = !firstEntry.formats || firstEntry.formats.length === 0;
-            
+
             if (isEntryImageOnly) {
                 logTable('DOWNLOAD', 'System', `Mendownload Instagram Carousel Foto menggunakan Fetch...`);
                 const downloadedFiles = [];
@@ -350,9 +435,9 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
                     const thumbnailUrl = entry.thumbnails && entry.thumbnails.length > 0
                         ? entry.thumbnails[entry.thumbnails.length - 1].url
                         : entry.thumbnail;
-                    
+
                     if (thumbnailUrl) {
-                        const dest = path.join(TEMP_DIR, `media_${timestamp}_${i+1}.jpg`);
+                        const dest = path.join(TEMP_DIR, `media_${timestamp}_${i + 1}.jpg`);
                         const res = await fetch(thumbnailUrl);
                         const buffer = await res.arrayBuffer();
                         fs.writeFileSync(dest, Buffer.from(buffer));
@@ -366,7 +451,7 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
             const thumbnailUrl = info.thumbnails && info.thumbnails.length > 0
                 ? info.thumbnails[info.thumbnails.length - 1].url
                 : info.thumbnail;
-                
+
             if (thumbnailUrl) {
                 const dest = path.join(TEMP_DIR, `media_${timestamp}_1.jpg`);
                 const res = await fetch(thumbnailUrl);
@@ -390,7 +475,7 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
     if (url.includes('youtube.com') || url.includes('youtu.be')) {
         options.extractorArgs = 'youtube:player-client=android,web,default';
     }
- 
+
     // Gunakan cookies jika tersedia (direkomendasikan untuk bypass blokir IP YouTube/Instagram di VPS)
     if (fs.existsSync(COOKIES_PATH) && (url.includes('instagram.com') || url.includes('youtube.com') || url.includes('youtu.be'))) {
         options.cookies = COOKIES_PATH;
@@ -409,13 +494,13 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
     try {
         logTable('DOWNLOAD', 'System', `Menjalankan yt-dlp untuk: ${url}`);
         await youtubedl(url, options);
-        
+
         // Cari semua file yang baru saja diunduh dengan timestamp yang sama
         const files = fs.readdirSync(TEMP_DIR);
         const downloadedFiles = files
             .filter(f => f.startsWith(`media_${timestamp}_`))
             .map(f => path.join(TEMP_DIR, f));
-        
+
         if (downloadedFiles.length > 0) {
             return downloadedFiles;
         } else {
@@ -424,14 +509,14 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
     } catch (err) {
         // Tulis detail log error ke berkas log utama
         writeErrorLog(url, `DOWNLOAD_${type.toUpperCase()}`, err, options);
- 
+
         // Karena yt-dlp terkadang melempar exit code 1 jika tidak menemukan format video,
         // kita tetap harus mengecek apakah file sebenarnya sudah berhasil diunduh.
         const files = fs.readdirSync(TEMP_DIR);
         const downloadedFiles = files
             .filter(f => f.startsWith(`media_${timestamp}_`))
             .map(f => path.join(TEMP_DIR, f));
-        
+
         if (downloadedFiles.length > 0) {
             logTable('DOWNLOAD', 'System', `yt-dlp melempar error, namun ${downloadedFiles.length} file berhasil diselamatkan.`);
             return downloadedFiles; // Selamatkan file yang berhasil diunduh
@@ -446,14 +531,19 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
                 return await downloadMedia(url, type, resolution, info); // Coba ulang sekali lagi
             }
         }
- 
-        // FALLBACK KEDUA: Jika yt-dlp gagal mengunduh, coba unduh menggunakan Y2Mate
+
+        // FALLBACK KEDUA: Jika yt-dlp gagal mengunduh, coba unduh menggunakan Cobalt/Y2Mate
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
             try {
-                logTable('WARN', 'System', 'yt-dlp gagal mengunduh media, mencoba mengunduh via Y2Mate...');
-                return await downloadFromY2Mate(url, isAudio);
+                logTable('WARN', 'System', 'yt-dlp gagal mengunduh media, mencoba via Cobalt...');
+                return await downloadFromCobalt(url, isAudio);
             } catch (fallbackErr) {
-                logTable('ERROR', 'System', `Fallback Y2Mate juga gagal: ${fallbackErr.message}`);
+                logTable('WARN', 'System', `Cobalt gagal: ${fallbackErr.message}. Mencoba via Y2Mate...`);
+                try {
+                    return await downloadFromY2Mate(url, isAudio);
+                } catch (y2mateErr) {
+                    logTable('ERROR', 'System', `Y2Mate juga gagal: ${y2mateErr.message}`);
+                }
             }
         }
 
