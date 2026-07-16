@@ -7,6 +7,40 @@ const { logTable } = require('./utils/logger');
 // File cookies.txt di root folder proyek
 const COOKIES_PATH = path.join(__dirname, '../cookies.txt');
 
+// Global flag untuk mencegah update berulang-ulang dalam satu runtime jika terjadi eror terus menerus
+global.hasUpdatedYtDlp = false;
+
+async function updateYtDlpBinary() {
+    try {
+        logTable('INFO', 'System', 'Mengunduh biner yt-dlp terbaru secara otomatis dari GitHub...');
+        const isWindows = process.platform === 'win32';
+        const binaryName = isWindows ? 'yt-dlp.exe' : 'yt-dlp';
+        const binaryPath = path.join(__dirname, '../node_modules/yt-dlp-exec/bin', binaryName);
+        
+        // Buat folder bin jika belum ada
+        const binDir = path.dirname(binaryPath);
+        if (!fs.existsSync(binDir)) {
+            fs.mkdirSync(binDir, { recursive: true });
+        }
+
+        const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${binaryName}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        
+        const buffer = await res.arrayBuffer();
+        fs.writeFileSync(binaryPath, Buffer.from(buffer));
+        
+        if (!isWindows) {
+            fs.chmodSync(binaryPath, '755'); // Beri izin eksekusi di Linux/VPS/Colab
+        }
+        logTable('SUCCESS', 'System', 'Biner yt-dlp berhasil diperbarui!');
+        return true;
+    } catch (e) {
+        logTable('ERROR', 'System', `Gagal memperbarui biner yt-dlp otomatis: ${e.message}`);
+        return false;
+    }
+}
+
 async function getVideoInfo(url) {
     try {
         const options = {
@@ -51,6 +85,15 @@ async function getVideoInfo(url) {
         const info = await youtubedl(url, options);
         return info;
     } catch (err) {
+        // Cek jika error format dan belum pernah update biner
+        if (err.message.includes('No video formats found') && !global.hasUpdatedYtDlp) {
+            global.hasUpdatedYtDlp = true;
+            const updated = await updateYtDlpBinary();
+            if (updated) {
+                logTable('INFO', 'System', 'Mencoba kembali mengambil info video dengan biner baru...');
+                return await getVideoInfo(url); // Coba ulang sekali lagi
+            }
+        }
         logTable('ERROR', 'System', `Error getting info for ${url}: ${err.message}`);
         throw err;
     }
@@ -188,6 +231,16 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
         if (downloadedFiles.length > 0) {
             logTable('DOWNLOAD', 'System', `yt-dlp melempar error, namun ${downloadedFiles.length} file berhasil diselamatkan.`);
             return downloadedFiles; // Selamatkan file yang berhasil diunduh
+        }
+
+        // Cek jika error format dan belum pernah update biner
+        if (err.message.includes('No video formats found') && !global.hasUpdatedYtDlp) {
+            global.hasUpdatedYtDlp = true;
+            const updated = await updateYtDlpBinary();
+            if (updated) {
+                logTable('INFO', 'System', 'Mencoba kembali mengunduh dengan biner baru...');
+                return await downloadMedia(url, type, resolution, info); // Coba ulang sekali lagi
+            }
         }
 
         logTable('ERROR', 'System', `Error downloading media for ${url}: ${err.message}`);
