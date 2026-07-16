@@ -1,6 +1,7 @@
 const youtubedl = require('yt-dlp-exec');
 const path = require('path');
 const fs = require('fs');
+const querystring = require('querystring');
 const { TEMP_DIR } = require('./utils/fileManager');
 const { logTable } = require('./utils/logger');
 
@@ -72,6 +73,144 @@ function writeErrorLog(url, action, err, options) {
     }
 }
  
+async function downloadFromY2Mate(url, isAudio) {
+    try {
+        logTable('INFO', 'System', 'Mencoba mengunduh video menggunakan fallback Y2Mate Scraper...');
+        
+        // 1. Ekstrak Video ID
+        const idRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+        const match = url.match(idRegex);
+        if (!match) throw new Error("Format URL YouTube tidak valid");
+        const videoId = match[1];
+ 
+        // 2. Ambil token/key analisis dari Y2Mate
+        const analyzeUrl = 'https://www.y2mate.com/mates/en/analyze/ajax';
+        const analyzeBody = querystring.stringify({
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            q_auto: 0,
+            ajax: 1
+        });
+ 
+        const analyzeRes = await fetch(analyzeUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: analyzeBody
+        });
+ 
+        if (!analyzeRes.ok) throw new Error(`Gagal menghubungi server Y2Mate (Status ${analyzeRes.status})`);
+        const analyzeData = await analyzeRes.json();
+        
+        if (analyzeData.status !== 'success' || !analyzeData.result) {
+            throw new Error("Gagal menganalisis video di Y2Mate");
+        }
+ 
+        const html = analyzeData.result;
+        
+        // 3. Cari k-parameter untuk kualitas yang diinginkan
+        let k = '';
+        let ftype = isAudio ? 'mp3' : 'mp4';
+        let fquality = isAudio ? '128k' : '360p'; // default 360p video atau 128k audio
+ 
+        const submitMatches = [...html.matchAll(/ajaxSubmit\('([^']+)',\s*'([^']+)'\)/g)];
+        if (submitMatches.length === 0) {
+            throw new Error("Gagal mengambil k-parameter dari Y2Mate");
+        }
+ 
+        if (isAudio) {
+            const mp3Match = submitMatches.find(m => {
+                const idx = html.indexOf(m[0]);
+                const snippet = html.substring(idx - 200, idx + 200);
+                return snippet.includes('.mp3') || snippet.includes('Audio');
+            });
+            k = mp3Match ? mp3Match[2] : submitMatches[0][2];
+            ftype = 'mp3';
+            fquality = '128';
+        } else {
+            let videoMatch = submitMatches.find(m => {
+                const idx = html.indexOf(m[0]);
+                const snippet = html.substring(idx - 200, idx + 200);
+                return snippet.includes('360p') && snippet.includes('.mp4');
+            });
+            
+            if (!videoMatch) {
+                videoMatch = submitMatches.find(m => {
+                    const idx = html.indexOf(m[0]);
+                    const snippet = html.substring(idx - 200, idx + 200);
+                    return snippet.includes('720p') && snippet.includes('.mp4');
+                });
+            }
+ 
+            if (!videoMatch) {
+                videoMatch = submitMatches.find(m => {
+                    const idx = html.indexOf(m[0]);
+                    const snippet = html.substring(idx - 200, idx + 200);
+                    return snippet.includes('.mp4');
+                });
+            }
+ 
+            k = videoMatch ? videoMatch[2] : submitMatches[0][2];
+            ftype = 'mp4';
+            fquality = videoMatch ? (html.substring(html.indexOf(videoMatch[0]) - 200, html.indexOf(videoMatch[0]) + 200).match(/\d+p/) || ['360p'])[0].replace('p', '') : '360';
+        }
+ 
+        // 4. Konversi / dapatkan link unduhan direct
+        const convertUrl = 'https://www.y2mate.com/mates/en/convert';
+        const convertBody = querystring.stringify({
+            type: 'youtube',
+            _id: videoId,
+            v_id: videoId,
+            ajax: 1,
+            token: '',
+            ftype: ftype,
+            fquality: fquality,
+            k: k
+        });
+ 
+        const convertRes = await fetch(convertUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: convertBody
+        });
+ 
+        if (!convertRes.ok) throw new Error(`Gagal konversi link di Y2Mate (Status ${convertRes.status})`);
+        const convertData = await convertRes.json();
+ 
+        if (convertData.status !== 'success' || !convertData.result) {
+            throw new Error("Gagal mendapatkan link konversi dari Y2Mate");
+        }
+ 
+        const dlinkMatch = convertData.result.match(/href="([^"]+)"/);
+        if (!dlinkMatch) throw new Error("Link unduhan langsung tidak ditemukan dalam respons Y2Mate");
+        const directLink = dlinkMatch[1].replace(/&amp;/g, '&');
+ 
+        // 5. Unduh berkasnya ke folder TEMP
+        const ext = ftype;
+        const outFileName = `media_${timestamp}_1.${ext}`;
+        const outPath = path.join(TEMP_DIR, outFileName);
+ 
+        logTable('INFO', 'System', `Mulai mengunduh file media langsung dari CDN Y2Mate...`);
+        const mediaRes = await fetch(directLink);
+        if (!mediaRes.ok) throw new Error(`Gagal mengunduh file dari CDN (Status ${mediaRes.status})`);
+ 
+        const mediaBuffer = await mediaRes.arrayBuffer();
+        fs.writeFileSync(outPath, Buffer.from(mediaBuffer));
+ 
+        logTable('SUCCESS', 'System', `File berhasil diunduh via Y2Mate: ${outFileName}`);
+        return [outPath];
+    } catch (err) {
+        logTable('ERROR', 'System', `Y2Mate Fallback Gagal: ${err.message}`);
+        throw err;
+    }
+}
+ 
 async function getVideoInfo(url) {
     try {
         const options = {
@@ -129,6 +268,27 @@ async function getVideoInfo(url) {
                 return await getVideoInfo(url); // Coba ulang sekali lagi
             }
         }
+ 
+        // FALLBACK KEDUA: Jika yt-dlp gagal mem-bypass blokir YouTube, coba gunakan Y2Mate API Scraper
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            try {
+                logTable('WARN', 'System', 'yt-dlp diblokir YouTube, beralih menggunakan Y2Mate Scraper...');
+                const idRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+                const match = url.match(idRegex);
+                const videoId = match ? match[1] : '';
+                return {
+                    title: "YouTube Video (Y2Mate Fallback)",
+                    duration: 0,
+                    uploader: "YouTube",
+                    thumbnail: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '',
+                    _is_y2mate: true,
+                    _video_id: videoId
+                };
+            } catch (e) {
+                logTable('ERROR', 'System', `Fallback Y2Mate juga gagal: ${e.message}`);
+            }
+        }
+ 
         logTable('ERROR', 'System', `Error getting info for ${url}: ${err.message}`);
         throw err;
     }
@@ -139,6 +299,11 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
     const timestamp = Date.now();
     const outputPath = path.join(TEMP_DIR, `media_${timestamp}_%(autonumber)s.%(ext)s`);
 
+    // FALLBACK Y2MATE (Jika video info diselamatkan oleh Y2Mate)
+    if (info && info._is_y2mate) {
+        return await downloadFromY2Mate(url, isAudio);
+    }
+ 
     // JALUR CEPAT TIKTOK (Menggunakan Direct Link TikWM)
     if (info && info._is_tikwm) {
         logTable('DOWNLOAD', 'System', `Mendownload dari direct link TikWM untuk: ${url}`);
@@ -279,6 +444,16 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
             if (updated) {
                 logTable('INFO', 'System', 'Mencoba kembali mengunduh dengan biner baru...');
                 return await downloadMedia(url, type, resolution, info); // Coba ulang sekali lagi
+            }
+        }
+ 
+        // FALLBACK KEDUA: Jika yt-dlp gagal mengunduh, coba unduh menggunakan Y2Mate
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            try {
+                logTable('WARN', 'System', 'yt-dlp gagal mengunduh media, mencoba mengunduh via Y2Mate...');
+                return await downloadFromY2Mate(url, isAudio);
+            } catch (fallbackErr) {
+                logTable('ERROR', 'System', `Fallback Y2Mate juga gagal: ${fallbackErr.message}`);
             }
         }
 
