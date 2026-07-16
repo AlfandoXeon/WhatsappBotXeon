@@ -538,10 +538,14 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
                 logTable('WARN', 'System', 'yt-dlp gagal mengunduh media, mencoba via Cobalt...');
                 return await downloadFromCobalt(url, isAudio);
             } catch (fallbackErr) {
+                // Catat eror Cobalt ke berkas log
+                writeErrorLog(url, 'DOWNLOAD_COBALT_FALLBACK', fallbackErr, { isAudio });
                 logTable('WARN', 'System', `Cobalt gagal: ${fallbackErr.message}. Mencoba via Y2Mate...`);
                 try {
                     return await downloadFromY2Mate(url, isAudio);
                 } catch (y2mateErr) {
+                    // Catat eror Y2Mate ke berkas log
+                    writeErrorLog(url, 'DOWNLOAD_Y2MATE_FALLBACK', y2mateErr, { isAudio });
                     logTable('ERROR', 'System', `Y2Mate juga gagal: ${y2mateErr.message}`);
                 }
             }
