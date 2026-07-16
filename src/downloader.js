@@ -16,14 +16,14 @@ async function getVideoInfo(url) {
             ignoreNoFormatsError: true // Penting untuk IG Slide Foto
         };
         
-        // Gunakan cookies jika url instagram
-        if (fs.existsSync(COOKIES_PATH) && url.includes('instagram.com')) {
+        // Gunakan cookies jika tersedia (sangat direkomendasikan untuk bypass blokir IP YouTube/Instagram di VPS)
+        if (fs.existsSync(COOKIES_PATH) && (url.includes('instagram.com') || url.includes('youtube.com') || url.includes('youtu.be'))) {
             options.cookies = COOKIES_PATH;
         }
 
-        // Bypass blokir IP YouTube dengan memicu fallback ke web player client
+        // Bypass blokir IP YouTube dengan memicu fallback ke ios dan web player client
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
-            options.extractorArgs = 'youtube:player_client=web,default';
+            options.extractorArgs = 'youtube:player_client=ios,web,default';
         }
 
         // TIKTOK BYPASS MENGGUNAKAN TIKWM API
@@ -142,12 +142,13 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
         playlistEnd: 10
     };
 
-    // Bypass blokir IP YouTube (terutama di VPS/Colab) dengan memicu fallback ke web player client
+    // Bypass blokir IP YouTube (terutama di VPS/Colab) dengan memicu fallback ke ios dan web player client
     if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        options.extractorArgs = 'youtube:player_client=web,default';
+        options.extractorArgs = 'youtube:player_client=ios,web,default';
     }
-
-    if (fs.existsSync(COOKIES_PATH) && url.includes('instagram.com')) {
+ 
+    // Gunakan cookies jika tersedia (direkomendasikan untuk bypass blokir IP YouTube/Instagram di VPS)
+    if (fs.existsSync(COOKIES_PATH) && (url.includes('instagram.com') || url.includes('youtube.com') || url.includes('youtu.be'))) {
         options.cookies = COOKIES_PATH;
     }
 
