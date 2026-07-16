@@ -41,6 +41,37 @@ async function updateYtDlpBinary() {
     }
 }
 
+function writeErrorLog(url, action, err, options) {
+    try {
+        const logPath = path.join(__dirname, '../ytdl_error.log');
+        const timestamp = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+        
+        let logContent = `==================================================\n`;
+        logContent += `TIMESTAMP   : ${timestamp} (WIB)\n`;
+        logContent += `ACTION      : ${action}\n`;
+        logContent += `URL         : ${url}\n`;
+        logContent += `ERROR       : ${err.message || err}\n`;
+        
+        if (err.stdout) {
+            logContent += `STDOUT      :\n${err.stdout}\n`;
+        }
+        if (err.stderr) {
+            logContent += `STDERR      :\n${err.stderr}\n`;
+        }
+        if (err.stack) {
+            logContent += `STACK TRACE :\n${err.stack}\n`;
+        }
+        
+        logContent += `OPTIONS     : ${JSON.stringify(options, null, 2)}\n`;
+        logContent += `==================================================\n\n`;
+        
+        fs.appendFileSync(logPath, logContent, 'utf8');
+        logTable('INFO', 'System', `Detail log error disimpan di: ytdl_error.log`);
+    } catch (e) {
+        logTable('ERROR', 'System', `Gagal menulis berkas log error: ${e.message}`);
+    }
+}
+ 
 async function getVideoInfo(url) {
     try {
         const options = {
@@ -86,6 +117,9 @@ async function getVideoInfo(url) {
         const info = await youtubedl(url, options);
         return info;
     } catch (err) {
+        // Tulis detail log error ke berkas log utama
+        writeErrorLog(url, 'GET_VIDEO_INFO', err, options);
+ 
         // Cek jika error format dan belum pernah update biner
         if (err.message.includes('No video formats found') && !global.hasUpdatedYtDlp) {
             global.hasUpdatedYtDlp = true;
@@ -223,6 +257,9 @@ async function downloadMedia(url, type = 'video', resolution = '720', info = nul
             throw new Error("Downloaded file not found at expected path.");
         }
     } catch (err) {
+        // Tulis detail log error ke berkas log utama
+        writeErrorLog(url, `DOWNLOAD_${type.toUpperCase()}`, err, options);
+ 
         // Karena yt-dlp terkadang melempar exit code 1 jika tidak menemukan format video,
         // kita tetap harus mengecek apakah file sebenarnya sudah berhasil diunduh.
         const files = fs.readdirSync(TEMP_DIR);
