@@ -74,6 +74,14 @@ function writeErrorLog(url, action, err, options) {
 }
 
 async function downloadFromCobalt(url, isAudio) {
+    // Bersihkan URL YouTube agar menjadi format watch standard (membantu parsing di Cobalt)
+    let targetUrl = url;
+    const idRegex = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([^"&?\/\s]{11})/;
+    const matchUrl = url.match(idRegex);
+    if (matchUrl) {
+        targetUrl = `https://www.youtube.com/watch?v=${matchUrl[1]}`;
+    }
+
     // List instance fallback jika instances.cobalt.tools gagal di-fetch
     const defaultInstances = [
         'https://api.cobalt.tools',
@@ -82,7 +90,7 @@ async function downloadFromCobalt(url, isAudio) {
         'https://cobalt.kudo.lol',
         'https://api.cobalt.run'
     ];
-
+ 
     let instances = [...defaultInstances];
     try {
         logTable('INFO', 'System', 'Mengambil daftar instance Cobalt aktif...');
@@ -90,8 +98,8 @@ async function downloadFromCobalt(url, isAudio) {
         if (res.ok) {
             const list = await res.json();
             const activeUrls = list
-                .filter(item => item.api && item.api.online)
-                .map(item => item.api.url);
+                .map(item => item.url || (item.api && item.api.url))
+                .filter(Boolean);
             if (activeUrls.length > 0) {
                 instances = [...activeUrls, ...defaultInstances];
             }
@@ -99,13 +107,13 @@ async function downloadFromCobalt(url, isAudio) {
     } catch (e) {
         logTable('WARN', 'System', 'Gagal memuat instance list dari instances.cobalt.tools, menggunakan default list.');
     }
-
+ 
     // Coba setiap instance satu per satu
     for (const apiInstance of instances) {
         try {
             const cleanApiUrl = apiInstance.endsWith('/') ? apiInstance.slice(0, -1) : apiInstance;
             logTable('INFO', 'System', `Mencoba mengunduh via Cobalt instance: ${cleanApiUrl}`);
-
+ 
             const response = await fetch(`${cleanApiUrl}/api/json`, {
                 method: 'POST',
                 headers: {
@@ -114,7 +122,7 @@ async function downloadFromCobalt(url, isAudio) {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 },
                 body: JSON.stringify({
-                    url: url,
+                    url: targetUrl,
                     videoQuality: "720",
                     isAudioOnly: isAudio
                 })
@@ -158,7 +166,7 @@ async function downloadFromY2Mate(url, isAudio) {
         logTable('INFO', 'System', 'Mencoba mengunduh video menggunakan fallback Y2Mate Scraper...');
 
         // 1. Ekstrak Video ID
-        const idRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+        const idRegex = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([^"&?\/\s]{11})/;
         const match = url.match(idRegex);
         if (!match) throw new Error("Format URL YouTube tidak valid");
         const videoId = match[1];
@@ -353,7 +361,7 @@ async function getVideoInfo(url) {
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
             try {
                 logTable('WARN', 'System', 'yt-dlp diblokir YouTube, menggunakan mock info fallback...');
-                const idRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+                const idRegex = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([^"&?\/\s]{11})/;
                 const match = url.match(idRegex);
                 const videoId = match ? match[1] : '';
                 return {
